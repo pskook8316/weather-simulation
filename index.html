@@ -23,6 +23,9 @@ table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}th:first-child,td:first-child{text-align:left}
 .mut{color:var(--mut);font-size:12px}
 #status{color:var(--mut);font-size:13px}
+.hourbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.hourbar input[type=range]{flex:1 1 220px;max-width:420px;accent-color:var(--ac)}
+.hourbar b{min-width:48px}
 #map{height:720px;border-radius:10px;border:1px solid var(--bd);z-index:0}
 @media(max-width:600px){#map{height:460px}}
 
@@ -69,8 +72,21 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
   <h2>전국 날씨 지도</h2>
   <div class="days" id="days"></div>
   <div class="days" id="metric"></div>
+  <div class="hourbar">
+    <button id="hsum" class="on">하루 요약</button>
+    <label class="mut" for="hr">시간대별 보기</label>
+    <input type="range" id="hr" min="0" max="23" step="1" value="12">
+    <b id="hlabel">–</b>
+  </div>
   <div id="map" role="img" aria-label="전국 날씨 지도"></div>
   <div class="mut" id="legend"></div>
+</div>
+
+<div class="card">
+  <h2>시간대별 예보 <span class="mut" id="htitle"></span></h2>
+  <select id="hcity"></select>
+  <svg id="hchart" viewBox="0 0 640 270" role="img" aria-label="시간대별 기온과 강수확률"></svg>
+  <div class="mut">빨간 선: 기온(°C) · 파란 막대: 강수확률(%) · 위쪽 아이콘: 3시간 간격 날씨. 위 지도의 날짜 버튼을 바꾸면 이 차트의 날짜도 바뀝니다.</div>
 </div>
 
 <div class="card">
@@ -90,7 +106,7 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
 <script>
 const CITIES=[["서울",37.57,126.98],["인천",37.46,126.52],["수원",37.22,127.03],["춘천",37.88,127.73],["강릉",37.75,128.88],["청주",36.64,127.49],["대전",36.35,127.38],["안동",36.57,128.73],["전주",35.82,127.15],["대구",35.87,128.60],["포항",36.02,129.37],["광주",35.16,126.85],["울산",35.54,129.31],["부산",35.18,129.08],["목포",34.81,126.39],["제주",33.50,126.53]];
 const N=200, DAYS=7;
-let data=[], sim=[], day=0, metric="tmax";
+let data=[], sim=[], day=0, metric="tmax", hour=null; // hour: null=하루 요약, 0~23=시간대별
 const $=id=>document.getElementById(id);
 const WD=["일","월","화","수","목","금","토"];
 function dlabel(s,i){const d=new Date(s+"T00:00:00");return i===0?"오늘":`${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]})`}
@@ -120,12 +136,13 @@ function simulate(c,ci){
 
 async function load(){
   const lat=CITIES.map(c=>c[1]).join(), lon=CITIES.map(c=>c[2]).join();
-  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,weather_code&timezone=Asia%2FSeoul&forecast_days=${DAYS}`;
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,weather_code&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=Asia%2FSeoul&forecast_days=${DAYS}`;
   const res=await fetch(url); if(!res.ok) throw new Error("HTTP "+res.status);
   const j=await res.json(), arr=Array.isArray(j)?j:[j];
   data=arr.map((x,i)=>({name:CITIES[i][0],lat:CITIES[i][1],lon:CITIES[i][2],dates:x.daily.time,
     tmax:x.daily.temperature_2m_max,tmin:x.daily.temperature_2m_min,
-    pop:x.daily.precipitation_probability_max.map(v=>v??0),wind:x.daily.wind_speed_10m_max,wc:x.daily.weather_code}));
+    pop:x.daily.precipitation_probability_max.map(v=>v??0),wind:x.daily.wind_speed_10m_max,wc:x.daily.weather_code,
+    hr:{t:x.hourly.temperature_2m,pop:x.hourly.precipitation_probability.map(v=>v??0),wc:x.hourly.weather_code,wind:x.hourly.wind_speed_10m}}));
   sim=data.map(simulate);
 }
 
@@ -172,15 +189,48 @@ function drawMap(){
   }
   layer.clearLayers();
   data.forEach((c,i)=>{
-    const v=c[metric][day], [kind,desc]=wxKind(c.wc[day]);
+    const hi=day*24+(hour??0), H=c.hr;
+    let v,code,unit=METRICS[metric][1],popup;
+    if(hour==null){
+      v=c[metric][day]; code=c.wc[day];
+      popup=`<b>${c.name}</b> · ${wxKind(code)[1]}<br>${dlabel(c.dates[day],day)}<br>최저 ${Math.round(c.tmin[day])}° / 최고 ${Math.round(c.tmax[day])}°<br>강수확률 ${c.pop[day]}% · 풍속 ${Math.round(c.wind[day])}km/h`;
+    }else{
+      v={tmax:H.t[hi],tmin:H.t[hi],pop:H.pop[hi],wind:H.wind[hi]}[metric]; code=H.wc[hi];
+      popup=`<b>${c.name}</b> · ${wxKind(code)[1]}<br>${dlabel(c.dates[day],day)} ${hour}시<br>기온 ${Math.round(H.t[hi])}°<br>강수확률 ${H.pop[hi]}% · 풍속 ${Math.round(H.wind[hi])}km/h`;
+    }
+    const kind=wxKind(code)[0];
     const html=`<div class="mk"><div class="wx k-${kind}">${wxHTML(kind)}</div><div class="gshadow"></div>`+
-      `<div class="pill${c.name==="서울"?" side":""}"><b>${c.name}</b> ${Math.round(v)}${METRICS[metric][1]}</div></div>`;
+      `<div class="pill${c.name==="서울"?" side":""}"><b>${c.name}</b> ${Math.round(v)}${unit}</div></div>`;
     const icon=L.divIcon({html,className:"",iconSize:[84,92],iconAnchor:[42,46]});
-    const popup=`<b>${c.name}</b> · ${desc}<br>${dlabel(c.dates[day],day)}<br>최저 ${Math.round(c.tmin[day])}° / 최고 ${Math.round(c.tmax[day])}°<br>강수확률 ${c.pop[day]}% · 풍속 ${Math.round(c.wind[day])}km/h`;
     L.marker([c.lat,c.lon],{icon}).bindPopup(popup).addTo(layer);
   });
-  $("legend").textContent=`${dlabel(data[0].dates[day],day)} · 아이콘은 날씨(맑음/구름/비/눈/뇌우), 숫자는 ${METRICS[metric][0]} · 아이콘을 누르면 상세 정보`;
+  const when=hour==null?dlabel(data[0].dates[day],day)+" 하루 요약":`${dlabel(data[0].dates[day],day)} ${String(hour).padStart(2,"0")}:00`;
+  const mname=(hour!=null&&(metric==="tmax"||metric==="tmin"))?"기온":METRICS[metric][0];
+  $("legend").textContent=`${when} · 아이콘은 날씨(맑음/구름/비/눈/뇌우), 숫자는 ${mname} · 아이콘을 누르면 상세 정보`;
+  $("hlabel").textContent=hour==null?"–":String(hour).padStart(2,"0")+":00";
+  $("hsum").className=hour==null?"on":"";
 }
+
+const EMO={sun:"☀️",partly:"⛅",cloud:"☁️",fog:"🌫️",rain:"🌧️",snow:"❄️",storm:"⛈️"};
+function drawHourly(){
+  const c=data[+$("hcity").value], off=day*24, H=c.hr;
+  const t=H.t.slice(off,off+24), pop=H.pop.slice(off,off+24), wc=H.wc.slice(off,off+24);
+  const W=640,Ht=270,L=40,R=40,T=34,B=30,pw=W-L-R,ph=Ht-T-B;
+  const mn=Math.floor(Math.min(...t)-1), mx=Math.ceil(Math.max(...t)+1);
+  const X=k=>L+pw*k/23, Y=v=>T+ph*(1-(v-mn)/(mx-mn)), YP=v=>T+ph*(1-v/100);
+  let s="";
+  const step=Math.max(1,Math.round((mx-mn)/5));
+  for(let v=mn;v<=mx;v+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="currentColor" opacity=".12"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="11" fill="#e5484d">${v}°</text>`;
+  [0,50,100].forEach(p=>s+=`<text x="${W-R+6}" y="${YP(p)+4}" font-size="11" fill="#2f6fed">${p}%</text>`);
+  pop.forEach((p,k)=>{s+=`<rect x="${X(k)-5}" y="${YP(p)}" width="10" height="${T+ph-YP(p)}" rx="2" fill="#2f6fed" opacity=".3"/>`});
+  if(hour!=null) s+=`<line x1="${X(hour)}" x2="${X(hour)}" y1="${T}" y2="${T+ph}" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 3"/>`;
+  s+=`<polyline fill="none" stroke="#e5484d" stroke-width="2.4" points="${t.map((v,k)=>X(k)+","+Y(v)).join(" ")}"/>`;
+  t.forEach((v,k)=>{if(k%3===0) s+=`<circle cx="${X(k)}" cy="${Y(v)}" r="3.5" fill="#e5484d"/><text x="${X(k)}" y="${Y(v)-8}" text-anchor="middle" font-size="11" fill="currentColor">${Math.round(v)}°</text>`});
+  for(let k=0;k<24;k+=3) s+=`<text x="${X(k)}" y="${Ht-10}" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">${k}시</text><text x="${X(k)}" y="${T-12}" text-anchor="middle" font-size="16">${EMO[wxKind(wc[k])[0]]}</text>`;
+  $("hchart").innerHTML=s;
+  $("htitle").textContent=`· ${c.name} ${dlabel(c.dates[day],day)}`;
+}
+function refresh(){drawMap();drawHourly()}
 
 function drawChart(){
   const i=+$("city").value, c=data[i], S=sim[i];
@@ -214,17 +264,26 @@ function drawTable(){
 
 function ui(){
   $("days").innerHTML=data[0].dates.map((d,i)=>`<button data-d="${i}" class="${i===day?"on":""}">${dlabel(d,i)}</button>`).join("");
-  $("metric").innerHTML=Object.entries(METRICS).map(([k,v])=>`<button data-m="${k}" class="${k===metric?"on":""}">${v[0]}</button>`).join("");
-  $("days").onclick=e=>{if(e.target.dataset.d!=null){day=+e.target.dataset.d;ui();drawMap()}};
-  $("metric").onclick=e=>{if(e.target.dataset.m){metric=e.target.dataset.m;ui();drawMap()}};
+  $("metric").innerHTML=Object.entries(METRICS).filter(([k])=>!(hour!=null&&k==="tmin")).map(([k,v])=>`<button data-m="${k}" class="${k===metric?"on":""}">${hour!=null&&k==="tmax"?"기온":v[0]}</button>`).join("");
+  $("days").onclick=e=>{if(e.target.dataset.d!=null){day=+e.target.dataset.d;ui();refresh()}};
+  $("metric").onclick=e=>{if(e.target.dataset.m){metric=e.target.dataset.m;ui();refresh()}};
+}
+function setHour(h){
+  hour=h;
+  if(hour!=null&&metric==="tmin") metric="tmax";
+  ui();refresh();
 }
 
 (async()=>{
   try{
     await load();
     $("city").innerHTML=data.map((c,i)=>`<option value="${i}">${c.name}</option>`).join("");
-    $("city").onchange=drawChart;
-    ui();drawMap();drawChart();drawTable();
+    $("hcity").innerHTML=$("city").innerHTML;
+    $("city").onchange=()=>{$("hcity").value=$("city").value;drawChart();drawHourly()};
+    $("hcity").onchange=()=>{$("city").value=$("hcity").value;drawChart();drawHourly()};
+    $("hr").oninput=()=>setHour(+$("hr").value);
+    $("hsum").onclick=()=>setHour(null);
+    ui();refresh();drawChart();drawTable();
     $("status").textContent="업데이트: "+new Date().toLocaleString("ko-KR");
   }catch(err){$("status").textContent="데이터를 불러오지 못했습니다: "+err.message}
 })();
