@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>전국 일주일 날씨 시뮬레이션</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{--bg:#f6f8fb;--card:#fff;--tx:#1b2430;--mut:#6b7686;--bd:#dfe5ee;--ac:#2f6fed}
 @media (prefers-color-scheme:dark){:root{--bg:#10151c;--card:#19212b;--tx:#e8edf3;--mut:#93a0b1;--bd:#2a3542;--ac:#6b9bff}}
@@ -21,6 +23,40 @@ table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}th:first-child,td:first-child{text-align:left}
 .mut{color:var(--mut);font-size:12px}
 #status{color:var(--mut);font-size:13px}
+#map{height:720px;border-radius:10px;border:1px solid var(--bd);z-index:0}
+@media(max-width:600px){#map{height:460px}}
+
+/* ---- 날씨 아이콘 (CSS 입체 + 애니메이션) ---- */
+.mk{position:relative;width:84px;height:92px;pointer-events:auto;transform:scale(.85);transform-origin:50% 50%}
+.wx{position:absolute;left:10px;top:0;width:64px;height:56px;animation:bob 4s ease-in-out infinite}
+.wx i{position:absolute;display:block}
+.gshadow{position:absolute;left:22px;top:54px;width:40px;height:7px;border-radius:50%;background:radial-gradient(rgba(0,0,0,.35),transparent 70%)}
+.pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);white-space:nowrap;font-size:12px;line-height:1;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:#1b2430;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.pill b{font-weight:700;margin-right:2px}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sun{left:15px;top:6px;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff7b8,#ffc83d 55%,#f08a00);box-shadow:0 0 10px 3px rgba(255,190,40,.5),inset -4px -5px 8px rgba(200,100,0,.45)}
+.rays{left:4px;top:-5px;width:56px;height:56px;border-radius:50%;border:4px dashed rgba(255,190,40,.95);box-sizing:border-box;animation:spin 14s linear infinite}
+.sun.small{left:6px;top:2px;width:26px;height:26px}
+.rays.small{left:-2px;top:-5px;width:42px;height:42px;border-width:3px}
+.cloud{left:8px;top:22px;width:46px;height:16px;border-radius:10px;background:linear-gradient(#fff,#d3dcea);box-shadow:0 7px 8px rgba(30,50,80,.35),inset 0 -3px 4px rgba(120,140,170,.35)}
+.cloud::before,.cloud::after{content:"";position:absolute;border-radius:50%;background:linear-gradient(#fff,#e1e8f2)}
+.cloud::before{left:5px;top:-11px;width:22px;height:22px}
+.cloud::after{left:19px;top:-17px;width:28px;height:28px;background:linear-gradient(#fff,#dbe3ef)}
+.cloud.back{left:20px;top:14px;opacity:.85;transform:scale(.8);animation:drift 6s ease-in-out infinite alternate}
+.cloud.gray{background:linear-gradient(#e4e9f0,#aab6c6)}.cloud.gray::before,.cloud.gray::after{background:linear-gradient(#eef1f6,#b8c3d2)}
+.cloud.dark{background:linear-gradient(#aab4c3,#5f6b7e)}.cloud.dark::before,.cloud.dark::after{background:linear-gradient(#bcc5d2,#6c788b)}
+.wx.k-partly .cloud{left:18px;top:26px;transform:scale(.9)}
+@keyframes drift{from{transform:translateX(-4px) scale(.8)}to{transform:translateX(5px) scale(.8)}}
+.drop{top:40px;width:2.5px;height:9px;border-radius:2px;background:linear-gradient(#9fd0ff,#2f8cff);transform:rotate(12deg);animation:fall .9s linear infinite;opacity:0}
+@keyframes fall{0%{transform:translate(0,-6px) rotate(12deg);opacity:0}20%{opacity:1}100%{transform:translate(-4px,14px) rotate(12deg);opacity:0}}
+.flake{top:40px;width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 4px #9bd,0 0 1px #6ad;animation:snowfall 2.2s linear infinite;opacity:0}
+@keyframes snowfall{0%{transform:translate(0,-6px);opacity:0}15%{opacity:1}50%{transform:translate(4px,6px)}100%{transform:translate(-3px,16px);opacity:0}}
+.bolt{left:27px;top:36px;width:12px;height:20px;background:linear-gradient(#fff6a8,#ffc400);clip-path:polygon(60% 0,0 58%,40% 58%,25% 100%,100% 38%,58% 38%);filter:drop-shadow(0 0 4px #ffd000);animation:flash 2.4s infinite}
+@keyframes flash{0%,60%,100%{opacity:0}62%,66%{opacity:1}64%{opacity:.2}}
+.fogbar{height:4px;border-radius:3px;background:linear-gradient(90deg,transparent,rgba(210,220,232,.95),transparent);animation:fogmove 4s ease-in-out infinite alternate}
+.fogbar.b1{left:8px;top:42px;width:48px}.fogbar.b2{left:2px;top:48px;width:52px;animation-delay:-1.3s}.fogbar.b3{left:12px;top:54px;width:44px;animation-delay:-2.6s}
+@keyframes fogmove{from{transform:translateX(-6px)}to{transform:translateX(6px)}}
 </style>
 </head>
 <body>
@@ -29,10 +65,10 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
 <p class="sub">Open-Meteo 7일 예보 + 몬테카를로 불확실성 시뮬레이션 · <span id="status">불러오는 중…</span></p>
 
 <div class="card">
-  <h2>전국 지도 (점 지도)</h2>
+  <h2>전국 날씨 지도</h2>
   <div class="days" id="days"></div>
   <div class="days" id="metric"></div>
-  <svg id="map" viewBox="0 0 520 560" role="img" aria-label="전국 날씨 지도"></svg>
+  <div id="map" role="img" aria-label="전국 날씨 지도"></div>
   <div class="mut" id="legend"></div>
 </div>
 
@@ -51,7 +87,7 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
 <p class="mut">데이터: Open-Meteo (CC BY 4.0). 시뮬레이션은 학습용이며 공식 예보가 아닙니다.</p>
 </main>
 <script>
-const CITIES=[["서울",37.57,126.98],["인천",37.46,126.71],["수원",37.26,127.03],["춘천",37.88,127.73],["강릉",37.75,128.88],["청주",36.64,127.49],["세종",36.48,127.29],["대전",36.35,127.38],["안동",36.57,128.73],["전주",35.82,127.15],["대구",35.87,128.60],["포항",36.02,129.37],["광주",35.16,126.85],["울산",35.54,129.31],["부산",35.18,129.08],["목포",34.81,126.39],["제주",33.50,126.53]];
+const CITIES=[["서울",37.57,126.98],["인천",37.46,126.52],["춘천",37.88,127.73],["강릉",37.75,128.88],["청주",36.64,127.49],["대전",36.35,127.38],["안동",36.57,128.73],["전주",35.82,127.15],["대구",35.87,128.60],["포항",36.02,129.37],["광주",35.16,126.85],["울산",35.54,129.31],["부산",35.18,129.08],["목포",34.81,126.39],["제주",33.50,126.53]];
 const N=200, DAYS=7;
 let data=[], sim=[], day=0, metric="tmax";
 const $=id=>document.getElementById(id);
@@ -83,12 +119,12 @@ function simulate(c,ci){
 
 async function load(){
   const lat=CITIES.map(c=>c[1]).join(), lon=CITIES.map(c=>c[2]).join();
-  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=Asia%2FSeoul&forecast_days=${DAYS}`;
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,weather_code&timezone=Asia%2FSeoul&forecast_days=${DAYS}`;
   const res=await fetch(url); if(!res.ok) throw new Error("HTTP "+res.status);
   const j=await res.json(), arr=Array.isArray(j)?j:[j];
   data=arr.map((x,i)=>({name:CITIES[i][0],lat:CITIES[i][1],lon:CITIES[i][2],dates:x.daily.time,
     tmax:x.daily.temperature_2m_max,tmin:x.daily.temperature_2m_min,
-    pop:x.daily.precipitation_probability_max.map(v=>v??0),wind:x.daily.wind_speed_10m_max}));
+    pop:x.daily.precipitation_probability_max.map(v=>v??0),wind:x.daily.wind_speed_10m_max,wc:x.daily.weather_code}));
   sim=data.map(simulate);
 }
 
@@ -99,17 +135,50 @@ function color(v,m){
 }
 const METRICS={tmax:["최고기온","°C"],tmin:["최저기온","°C"],pop:["강수확률","%"],wind:["풍속","km/h"]};
 
+// WMO weather_code → 종류/설명
+function wxKind(c){
+  if(c===0) return ["sun","맑음"];
+  if(c<=2) return ["partly","구름 조금"];
+  if(c===3) return ["cloud","흐림"];
+  if(c===45||c===48) return ["fog","안개"];
+  if(c>=51&&c<=57) return ["rain","이슬비"];
+  if((c>=61&&c<=67)||(c>=80&&c<=82)) return ["rain","비"];
+  if((c>=71&&c<=77)||c===85||c===86) return ["snow","눈"];
+  if(c>=95) return ["storm","뇌우"];
+  return ["cloud","흐림"];
+}
+function wxHTML(k){
+  const cloud=(cls="")=>`<i class="cloud ${cls}"></i>`;
+  const drops=n=>Array.from({length:n},(_,i)=>`<i class="drop" style="left:${14+i*9}px;animation-delay:-${(i*0.23).toFixed(2)}s"></i>`).join("");
+  const flakes=n=>Array.from({length:n},(_,i)=>`<i class="flake" style="left:${13+i*9}px;animation-delay:-${(i*0.45).toFixed(2)}s"></i>`).join("");
+  switch(k){
+    case "sun": return `<i class="rays"></i><i class="sun"></i>`;
+    case "partly": return `<i class="rays small"></i><i class="sun small"></i>${cloud("front")}`;
+    case "cloud": return `${cloud("back")}${cloud("front gray")}`;
+    case "fog": return `${cloud("front gray")}<i class="fogbar b1"></i><i class="fogbar b2"></i><i class="fogbar b3"></i>`;
+    case "rain": return `${cloud("front dark")}${drops(5)}`;
+    case "snow": return `${cloud("front gray")}${flakes(5)}`;
+    case "storm": return `${cloud("front dark")}${drops(3)}<i class="bolt"></i>`;
+  }
+}
+let lmap=null, layer=null;
 function drawMap(){
-  const W=520,H=560,x=lo=>(lo-125.6)/4.2*W,y=la=>(38.2-la)/5.2*H;
-  let s="";
-  data.forEach(c=>{
-    const v=c[metric][day], cx=x(c.lon), cy=y(c.lat);
-    s+=`<circle cx="${cx}" cy="${cy}" r="22" fill="${color(v,metric)}" stroke="rgba(0,0,0,.25)"/>`+
-       `<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="12" font-weight="600" fill="#111">${c.name}</text>`+
-       `<text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="12" fill="#111">${Math.round(v)}${METRICS[metric][1]}</text>`;
+  if(!lmap){
+    lmap=L.map("map",{scrollWheelZoom:false,zoomSnap:0.25}).setView([36.2,127.9],7);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:12,attribution:"© OpenStreetMap contributors"}).addTo(lmap);
+    layer=L.layerGroup().addTo(lmap);
+    lmap.fitBounds(L.latLngBounds(data.map(c=>[c.lat,c.lon])),{padding:[50,50]});
+  }
+  layer.clearLayers();
+  data.forEach((c,i)=>{
+    const v=c[metric][day], [kind,desc]=wxKind(c.wc[day]);
+    const html=`<div class="mk"><div class="wx k-${kind}">${wxHTML(kind)}</div><div class="gshadow"></div>`+
+      `<div class="pill"><b>${c.name}</b> ${Math.round(v)}${METRICS[metric][1]}</div></div>`;
+    const icon=L.divIcon({html,className:"",iconSize:[84,92],iconAnchor:[42,46]});
+    const popup=`<b>${c.name}</b> · ${desc}<br>${dlabel(c.dates[day],day)}<br>최저 ${Math.round(c.tmin[day])}° / 최고 ${Math.round(c.tmax[day])}°<br>강수확률 ${c.pop[day]}% · 풍속 ${Math.round(c.wind[day])}km/h`;
+    L.marker([c.lat,c.lon],{icon}).bindPopup(popup).addTo(layer);
   });
-  $("map").innerHTML=s;
-  $("legend").textContent=`${dlabel(data[0].dates[day],day)} · ${METRICS[metric][0]} (위치는 위경도 기준 개략 배치)`;
+  $("legend").textContent=`${dlabel(data[0].dates[day],day)} · 아이콘은 날씨(맑음/구름/비/눈/뇌우), 숫자는 ${METRICS[metric][0]} · 아이콘을 누르면 상세 정보`;
 }
 
 function drawChart(){
