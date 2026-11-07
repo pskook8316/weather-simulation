@@ -32,6 +32,7 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
 .wx i{position:absolute;display:block}
 .gshadow{position:absolute;left:22px;top:54px;width:40px;height:7px;border-radius:50%;background:radial-gradient(rgba(0,0,0,.35),transparent 70%)}
 .pill{position:absolute;left:50%;top:64px;transform:translateX(-50%);white-space:nowrap;font-size:12px;line-height:1;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:#1b2430;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.pill.side{top:-16px}
 .pill b{font-weight:700;margin-right:2px}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -87,7 +88,7 @@ th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--bd);white-s
 <p class="mut">데이터: Open-Meteo (CC BY 4.0). 시뮬레이션은 학습용이며 공식 예보가 아닙니다.</p>
 </main>
 <script>
-const CITIES=[["서울",37.57,126.98],["인천",37.46,126.52],["춘천",37.88,127.73],["강릉",37.75,128.88],["청주",36.64,127.49],["대전",36.35,127.38],["안동",36.57,128.73],["전주",35.82,127.15],["대구",35.87,128.60],["포항",36.02,129.37],["광주",35.16,126.85],["울산",35.54,129.31],["부산",35.18,129.08],["목포",34.81,126.39],["제주",33.50,126.53]];
+const CITIES=[["서울",37.57,126.98],["인천",37.46,126.52],["수원",37.22,127.03],["춘천",37.88,127.73],["강릉",37.75,128.88],["청주",36.64,127.49],["대전",36.35,127.38],["안동",36.57,128.73],["전주",35.82,127.15],["대구",35.87,128.60],["포항",36.02,129.37],["광주",35.16,126.85],["울산",35.54,129.31],["부산",35.18,129.08],["목포",34.81,126.39],["제주",33.50,126.53]];
 const N=200, DAYS=7;
 let data=[], sim=[], day=0, metric="tmax";
 const $=id=>document.getElementById(id);
@@ -173,7 +174,7 @@ function drawMap(){
   data.forEach((c,i)=>{
     const v=c[metric][day], [kind,desc]=wxKind(c.wc[day]);
     const html=`<div class="mk"><div class="wx k-${kind}">${wxHTML(kind)}</div><div class="gshadow"></div>`+
-      `<div class="pill"><b>${c.name}</b> ${Math.round(v)}${METRICS[metric][1]}</div></div>`;
+      `<div class="pill${c.name==="서울"?" side":""}"><b>${c.name}</b> ${Math.round(v)}${METRICS[metric][1]}</div></div>`;
     const icon=L.divIcon({html,className:"",iconSize:[84,92],iconAnchor:[42,46]});
     const popup=`<b>${c.name}</b> · ${desc}<br>${dlabel(c.dates[day],day)}<br>최저 ${Math.round(c.tmin[day])}° / 최고 ${Math.round(c.tmax[day])}°<br>강수확률 ${c.pop[day]}% · 풍속 ${Math.round(c.wind[day])}km/h`;
     L.marker([c.lat,c.lon],{icon}).bindPopup(popup).addTo(layer);
